@@ -21,39 +21,7 @@ Hệ thống tích hợp bộ đệm FIFO kép (Dual Synchronous FIFO) cùng kh�
 
 Hệ thống gồm 7 module con kết nối đồng bộ theo nhịp Clock hệ thống (`clk_i`):
 
-```text
- ┌─────────┐      rx_i      ┌──────────┐  wr_i / w_data  ┌─────────┐
- │ Máy tính├───────────────►│ UART_RX  ├────────────────►│ FIFO_RX │
- └─────────┘                └──────────┘                 └────┬────┘
-                                                              │ rd_i / r_data
-                                                              ▼
-                                                         ┌─────────┐
-                                                         │ PROCESS │
-                                                         └────┬────┘
-                                                              │ wr_i / w_data
-                                                              ▼
- ┌─────────┐      tx_o      ┌──────────┐                 ┌─────────┐
- │ Máy tính│◄───────────────┤ UART_TX  │                 │ FIFO_TX │
- └─────────┘                └▲────────▲┘                 └────┬────┘
-                             │        │                       │
-                     data_i  │        │ tx_start_i            │ r_data
-                             │        │                       │
-                             │        └────────────┐          │
-                             └─────────────────────┼──────────┤
-                                                   │          │
-                                          uart_    │          │ fifo_
-                                          start_o  │          │ empty_i
-                                                   │          │
-                                          ┌────────┴──────────▼┐
-                                          │   TX_CONTROLLER    │
-                                          │                    │
-                                          │ (Phát xung rd_o)   │
-                                          └─────────┬──────────┘
-                                                    │ fifo_rd_o
-                                                    └────────────────► FIFO_TX.rd_i
-
-```
 ## 🛠️ Công cụ & Phần cứng sử dụng (Tools & Hardware)
 **Hardware:** Board FPGA (Altera/Intel Cyclone IV), Cảm biến màu sắc TCS34725, Cáp chuyển đổi USB-to-UART (CP2102 / FT232 / CH340).
 **Software:** C# WinForms SerialPort Interface.
-**Firmware:** Verilog HDL
+**Firmware:** Verilog HDL.
