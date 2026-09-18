@@ -1,0 +1,100 @@
+module packet_process (
+    input  wire       clk_i,
+    input  wire       rst_i,
+
+    // Giao tiếp với FIFO_RX
+    input  wire       fifo_rx_empty_i,
+    output reg        rd_rq_o,        // Rút byte từ FIFO_RX
+    input  wire [7:0] data_i,          // Byte đọc từ FIFO_RX
+
+    // Giao tiếp với FIFO_TX
+    input  wire       fifo_tx_full_i,
+    output reg        wr_en_tx_o,     // Lệnh ghi sang FIFO_TX
+    output reg  [7:0] tx_data_o,      // Dữ liệu đẩy sang FIFO_TX
+
+    // Điều khiển Sensor
+    output reg  [7:0] cmd_o,          // Mã lệnh cho Sensor
+    output reg  [7:0] data_o          // Dữ liệu tham số cho Sensor
+);
+
+    // Định nghĩa các trạng thái FSM
+    localparam ST_IDLE       = 3'd0,
+               ST_READ_BYTE  = 3'd1,
+               ST_PARSE_HDR  = 3'd2,
+               ST_PARSE_TYPE = 3'd3,
+               ST_PARSE_CMD  = 3'd4,
+               ST_CHECK_CRC  = 3'd5,
+               ST_EXECUTE    = 3'd6;
+
+    reg [2:0] state;
+    reg [7:0] header_reg, type_reg, payload_reg, crc_reg;
+
+    always @(posedge clk_i or posedge rst_i) begin
+        if (rst_i) begin
+            state       <= ST_IDLE;
+            rd_rq_o     <= 1'b0;
+            wr_en_tx_o  <= 1'b0;
+            cmd_o       <= 8'h00;
+            data_o      <= 8'h00;
+        end else begin
+            // Mặc định hạ các xung điều khiển
+            rd_rq_o    <= 1'b0;
+            wr_en_tx_o <= 1'b0;
+
+            case (state)
+                ST_IDLE: begin
+                    if (!fifo_rx_empty_i) begin
+                        rd_rq_o <= 1'b1; // Phát xung yêu cầu FIFO_RX nhả 1 byte
+                        state   <= ST_PARSE_HDR;
+                    end
+                end
+
+                ST_PARSE_HDR: begin
+                    if (data_i == 8'hAA) begin // Header hợp lệ (0xAA)
+                        header_reg <= data_i;
+                        if (!fifo_rx_empty_i) begin
+                            rd_rq_o <= 1'b1;
+                            state   <= ST_PARSE_TYPE;
+                        end
+                    end else begin
+                        state <= ST_IDLE; // Header sai -> Bỏ qua
+                    end
+                end
+
+                ST_PARSE_TYPE: begin
+                    type_reg <= data_i; // 0x01: Command Sensor, 0x02: Loopback
+                    if (!fifo_rx_empty_i) begin
+                        rd_rq_o <= 1'b1;
+                        state   <= ST_PARSE_CMD;
+                    end
+                end
+
+                ST_PARSE_CMD: begin
+                    payload_reg <= data_i;
+                    state       <= ST_EXECUTE;
+                end
+
+                ST_EXECUTE: begin
+                    if (type_reg == 8'h01) begin
+                        // Lệnh điều khiển Sensor
+                        cmd_o  <= payload_reg;
+                        data_o <= payload_reg;
+                        state  <= ST_IDLE;
+                    end else if (type_reg == 8'h02) begin
+                        // Lệnh Loopback về TX
+                        if (!fifo_tx_full_i) begin
+                            tx_data_o  <= payload_reg;
+                            wr_en_tx_o <= 1'b1; // Đẩy dữ liệu vào FIFO_TX
+                            state      <= ST_IDLE;
+                        end
+                    end else begin
+                        state <= ST_IDLE;
+                    end
+                end
+
+                default: state <= ST_IDLE;
+            endcase
+        end
+    end
+
+endmodule

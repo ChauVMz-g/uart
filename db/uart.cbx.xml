@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<LOG_ROOT>
+	<PROJECT NAME="uart">
+		<CBX_INST_ENTRY INSTANCE_NAME="|uart|fifo:u_fifo_rx|altsyncram:memory_rtl_0" CBX_FILE_NAME="altsyncram_5pd1.tdf"/>
+		<CBX_INST_ENTRY INSTANCE_NAME="|uart|fifo:u_fifo_tx|altsyncram:memory_rtl_0" CBX_FILE_NAME="altsyncram_5pd1.tdf"/>
+	</PROJECT>
+</LOG_ROOT>

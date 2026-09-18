@@ -1,0 +1,20 @@
+
+State Machine - |uart|uart_tx:u_uart_tx|state
+Name state.STOP state.DATA state.START state.IDLE 
+state.IDLE 0 0 0 0 
+state.START 0 0 1 1 
+state.DATA 0 1 0 1 
+state.STOP 1 0 0 1 
+
+State Machine - |uart|tx_controller:u_tx_controller|state
+Name state.STATE_IDLE state.STATE_START_TX state.STATE_READ_FIFO 
+state.STATE_IDLE 0 0 0 
+state.STATE_READ_FIFO 1 0 1 
+state.STATE_START_TX 1 1 0 
+
+State Machine - |uart|uart_rx:u_uart_rx|state
+Name state.STOP state.DATA state.START state.IDLE 
+state.IDLE 0 0 0 0 
+state.START 0 0 1 1 
+state.DATA 0 1 0 1 
+state.STOP 1 0 0 1 
