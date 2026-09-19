@@ -21,6 +21,8 @@ Hệ thống tích hợp bộ đệm FIFO kép (Dual Synchronous FIFO) cùng kh�
 
 Hệ thống gồm 7 module con kết nối đồng bộ theo nhịp Clock hệ thống (`clk_i`):
 
+---
+
 ## 🛠️ Công cụ & Phần cứng sử dụng (Tools & Hardware)
 * **Hardware:** Board FPGA (Altera/Intel Cyclone IV), Cảm biến màu sắc TCS34725, Cáp chuyển đổi USB-to-UART (CP2102 / FT232 / CH340).
 * **Software:** C# WinForms SerialPort Interface.
