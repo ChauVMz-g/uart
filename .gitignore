@@ -1,0 +1,13 @@
+# Quartus temporary databases and generated files
+db/
+incremental_db/
+simulation/
+hc_output/
+*.qws
+*.rpt
+*.smsg
+*.summary
+*.jdi
+*.pin
+*.done
+*.bak

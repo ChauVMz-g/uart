@@ -6,10 +6,10 @@ module uart #(
     parameter BAUDRATE     = 9600,     // Tốc độ truyền Baud Rate (bps) - Mặc định 9600
 
     // Các tham số định nghĩa khung gói tin
-    parameter [7:0] HEADER_VAL   = 8'hAA,
-    parameter [7:0] FOOTER_VAL   = 8'h55,
-    parameter [7:0] TYPE_SENSOR  = 8'h01,
-    parameter [7:0] TYPE_LOOPBACK= 8'h02
+    parameter [7:0] HEADER_VAL   = 8'h23,
+    parameter [7:0] FOOTER_VAL   = 8'h54,
+    parameter [7:0] TYPE_LOOPBACK= 8'h01,
+    parameter [7:0] TYPE_SENSOR  = 8'h02
 )(
     input  wire       clk_i,       // System Clock
     input  wire       rst_i,       // Reset hệ thống (Active High)
@@ -19,8 +19,8 @@ module uart #(
     output wire       tx_o,        // Chân truyền TX
 
     // Đầu ra điều khiển ngoại vi (Sensor)
-    output wire [7:0] cmd_o,       // Mã lệnh giải mã được
-    output wire [7:0] data_o       // Dữ liệu/Tham số đi kèm
+    output wire [7:0] cmd_o,       // Mã lệnh giải mã được    ///Sai
+    output wire [7:0] data_o       // Dữ liệu/Tham số đi kèm  ///Sai
 );
 
     // =========================================================================
@@ -57,7 +57,7 @@ module uart #(
     // =========================================================================
 
     // 1. Khối Baud Rate Generator (Nhận CLK_FREQ và BAUDRATE từ Top Module)
-    Baud_gen #(
+    baud_gen #(
         .CLK_FREQ (CLK_FREQ),
         .BAUDRATE (BAUDRATE)
     ) u_baud_gen (
@@ -67,7 +67,7 @@ module uart #(
     );
 
     // 2. Khối UART RX
-    UART_RX u_uart_rx (
+    uart_rx u_uart_rx (
         .clk_i     (clk_i),
         .rst_i     (rst_i),
         .rx_i      (rx_i),
@@ -77,12 +77,12 @@ module uart #(
     );
 
     // 3. Bộ đệm FIFO RX
-    FIFO_RX u_fifo_rx (
+    fifo u_fifo_rx (
         .clk_i     (clk_i),
         .rst_i     (rst_i),
-        .wr_i      (rx_done_to_fifo_wr),
+        .wr_en     (rx_done_to_fifo_wr),
         .w_data_i  (rx_data_to_fifo_wdata),
-        .rd_i      (process_rd_rq_rx),
+        .rd_en     (process_rd_rq_rx),
         .r_data_o  (fifo_rx_rdata),
         .empty_o   (fifo_rx_empty),
         .full_o    ()
@@ -111,12 +111,12 @@ module uart #(
     );
 
     // 5. Bộ đệm FIFO TX
-    FIFO_TX u_fifo_tx (
+    fifo u_fifo_tx (
         .clk_i     (clk_i),
         .rst_i     (rst_i),
-        .wr_i      (process_wr_en_tx),
+        .wr_en     (process_wr_en_tx),
         .w_data_i  (process_tx_wdata),
-        .rd_i      (tx_ctrl_rd_fifo),
+        .rd_en     (tx_ctrl_rd_fifo),
         .r_data_o  (fifo_tx_rdata),
         .empty_o   (fifo_tx_empty),
         .full_o    (fifo_tx_full)
@@ -133,7 +133,7 @@ module uart #(
     );
 
     // 7. Khối UART TX
-    UART_TX u_uart_tx (
+    uart_tx u_uart_tx (
         .clk_i     (clk_i),
         .rst_i     (rst_i),
         .s_tick_i  (s_tick),
