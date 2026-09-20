@@ -1,39 +1,20 @@
 module tx_controller (
-    input  wire clk_i,        // Xung clock hệ thống
-    input  wire rst_i,        // Xung reset hệ thống (tích cực cao)
-    
-    // Giao tiếp với FIFO_TX
-    input  wire fifo_empty_i, // Cờ báo rỗng từ FIFO_TX (1: empty, 0: has data)
-    output reg  fifo_rd_o,    // Xung kích đọc 1 byte từ FIFO_TX
-    
-    // Giao tiếp với UART_TX
-    input  wire tx_done_i,    // Xung báo đã truyền xong 1 byte từ UART_TX
-    output reg  uart_start_o  // Xung kích phát UART_TX bắt đầu gửi dữ liệu
+    input  wire clk_i,
+    input  wire rst_i,
+
+    // FIFO Interface
+    input  wire fifo_empty_i,
+    output reg  fifo_rd_o,
+
+    // UART Interface
+    input  wire tx_done_i,
+    output reg  uart_start_o
 );
 
-    // =========================================================================
-    // 1. Quản lý cờ nội bộ `uart_ready`
-    // =========================================================================
-    reg uart_ready;
-
-    always @(posedge clk_i or posedge rst_i) begin
-        if (rst_i) begin
-            uart_ready <= 1'b1; // Sau Reset, UART_TX được coi là đang RẢNH
-        end else begin
-            if (uart_start_o) begin
-                uart_ready <= 1'b0; // Kích phát -> Đánh dấu UART đang BẬN
-            end else if (tx_done_i) begin
-                uart_ready <= 1'b1; // Nhận xung tx_done_i -> Đánh dấu UART đã RẢNH
-            end
-        end
-    end
-
-    // =========================================================================
-    // 2. Định nghĩa máy trạng thái FSM (State Machine)
-    // =========================================================================
-    localparam STATE_IDLE     = 2'b00; // Trạng thái chờ
-    localparam STATE_READ_FIFO = 2'b01; // Kích xung đọc FIFO_TX
-    localparam STATE_START_TX = 2'b10; // Kích xung phát UART_TX
+    localparam STATE_IDLE      = 2'b00,
+               STATE_READ_FIFO = 2'b01,
+               STATE_START_TX  = 2'b10,
+               STATE_WAIT_DONE = 2'b11;
 
     reg [1:0] state;
 
@@ -43,26 +24,31 @@ module tx_controller (
             fifo_rd_o    <= 1'b0;
             uart_start_o <= 1'b0;
         end else begin
-            // Mặc định hạ các xung điều khiển về 0 ở mỗi chu kỳ clock (Tạo xung dài đúng 1 clk)
             fifo_rd_o    <= 1'b0;
             uart_start_o <= 1'b0;
 
             case (state)
                 STATE_IDLE: begin
-                    // Điều kiện: FIFO_TX có dữ liệu (fifo_empty_i == 0) AND UART_TX đang rảnh (uart_ready == 1)
-                    if (!fifo_empty_i && uart_ready) begin
+                    if (!fifo_empty_i) begin
                         state <= STATE_READ_FIFO;
                     end
                 end
 
                 STATE_READ_FIFO: begin
-                    fifo_rd_o <= 1'b1;          // Tạo xung rd_en đúng 1 chu kỳ clock
+                    fifo_rd_o <= 1'b1;         // Kích đọc FIFO (đợi 1 clock ra BRAM data)
                     state     <= STATE_START_TX;
                 end
 
                 STATE_START_TX: begin
-                    uart_start_o <= 1'b1;       // Tạo xung tx_start_i đúng 1 chu kỳ clock
-                    state        <= STATE_IDLE; // Quay về IDLE chờ byte tiếp theo
+                    uart_start_o <= 1'b1;       // Kích UART phát
+                    state        <= STATE_WAIT_DONE;
+                end
+
+                STATE_WAIT_DONE: begin
+                    // Đứng chờ xung tx_done_i (1 clock pulse) báo gửi xong byte
+                    if (tx_done_i) begin
+                        state <= STATE_IDLE;
+                    end
                 end
 
                 default: state <= STATE_IDLE;
