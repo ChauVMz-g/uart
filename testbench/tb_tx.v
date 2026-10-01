@@ -2,21 +2,37 @@
 
 module tb_tx;
 
-    // 1. Khai báo tín hiệu kết nối với Module TX
+    // -------------------------------------------------------------------------
+    // 1. Tín hiệu kết nối với Module TX
+    // -------------------------------------------------------------------------
     reg        clk_i;
     reg        rst_i;
     reg        tx_start_i;
     reg        s_tick_i;
     reg  [7:0] data_i;
+
     wire       tx_o;
     wire       tx_done_o;
     wire       tx_busy_o;
 
-    // Khởi tạo các hằng số thời gian
-    localparam CLK_PERIOD  = 20;   // Clock 50MHz (20ns)
-    localparam TICK_PERIOD = 6510; // Tần số lấy mẫu Baudrate 9600
+    // -------------------------------------------------------------------------
+    // 2. Hằng số định thời
+    // -------------------------------------------------------------------------
+    localparam CLK_PERIOD  = 20;     // 50 MHz
+    localparam TICK_PERIOD = 6510;   // Tick dùng cho TB
 
-    // 2. Gọi Module TX cần kiểm thử (DUT)
+    // UART bit time:
+    // 6510 ns × 16 = 104160 ns
+    localparam BIT_TIME = TICK_PERIOD * 16;
+
+    integer error_count = 0;
+
+    // Dữ liệu mà TB đang chờ nhận từ TX
+    reg [7:0] expected_data;
+
+    // -------------------------------------------------------------------------
+    // 3. Khởi tạo DUT
+    // -------------------------------------------------------------------------
     tx dut (
         .clk_i      (clk_i),
         .rst_i      (rst_i),
@@ -28,61 +44,229 @@ module tb_tx;
         .tx_busy_o  (tx_busy_o)
     );
 
-    // 3. Tạo Xung Clock hệ thống (50MHz)
+    // -------------------------------------------------------------------------
+    // 4. Clock 50 MHz
+    // -------------------------------------------------------------------------
     always #(CLK_PERIOD / 2) clk_i = ~clk_i;
 
-    // 4. Tạo Xung Tick cho Baudrate
+    // -------------------------------------------------------------------------
+    // 5. Tạo s_tick_i
+    // -------------------------------------------------------------------------
     initial begin
         s_tick_i = 1'b0;
+
         forever begin
             #(TICK_PERIOD - CLK_PERIOD);
             s_tick_i = 1'b1;
+
             #(CLK_PERIOD);
             s_tick_i = 1'b0;
         end
     end
 
-    // 5. Kịch bản mô phỏng từng bước
+    // -------------------------------------------------------------------------
+    // 6. Task nhận 1 byte UART từ tx_o
+    //
+    // UART:
+    //   Idle  = 1
+    //   Start = 0
+    //   Data  = 8 bit, LSB first
+    //   Stop  = 1
+    // -------------------------------------------------------------------------
+    task receive_uart_byte;
+        integer i;
+        reg [7:0] received_data;
+        reg       start_bit;
+        reg       stop_bit;
+
+        begin
+            received_data = 8'h00;
+
+            // -------------------------------------------------------------
+            // Chờ cạnh xuống của START BIT
+            // -------------------------------------------------------------
+            @(negedge tx_o);
+
+            // -------------------------------------------------------------
+            // Đi vào giữa START BIT
+            // -------------------------------------------------------------
+            #(BIT_TIME / 2);
+
+            start_bit = tx_o;
+
+            if (start_bit !== 1'b0) begin
+                $display(
+                    "[FAIL] Invalid START bit at time = %0t",
+                    $time
+                );
+
+                error_count = error_count + 1;
+            end
+
+            // -------------------------------------------------------------
+            // Đến giữa từng DATA BIT
+            // -------------------------------------------------------------
+            for (i = 0; i < 8; i = i + 1) begin
+                #(BIT_TIME);
+
+                received_data[i] = tx_o;
+            end
+
+            // -------------------------------------------------------------
+            // Đến giữa STOP BIT
+            // -------------------------------------------------------------
+            #(BIT_TIME);
+
+            stop_bit = tx_o;
+
+            if (stop_bit !== 1'b1) begin
+                $display(
+                    "[FAIL] Invalid STOP bit at time = %0t",
+                    $time
+                );
+
+                error_count = error_count + 1;
+            end
+
+            // -------------------------------------------------------------
+            // So sánh dữ liệu nhận được với expected_data
+            // -------------------------------------------------------------
+            if (received_data === expected_data) begin
+
+                $display(
+                    "[PASS] Received: 0x%X (Khop voi Expected: 0x%X) time = %0t",
+                    received_data,
+                    expected_data,
+                    $time
+                );
+
+            end else begin
+
+                $display(
+                    "[FAIL] Received: 0x%X (Khong khop Expected: 0x%X) time = %0t",
+                    received_data,
+                    expected_data,
+                    $time
+                );
+
+                error_count = error_count + 1;
+            end
+        end
+    endtask
+
+    // -------------------------------------------------------------------------
+    // 7. Luồng receiver chạy song song
+    //
+    // Receiver phải được chạy trước khi TX bắt đầu truyền để không bỏ
+    // START BIT.
+    // -------------------------------------------------------------------------
     initial begin
-        // --- Bước 1: Khởi tạo giá trị ban đầu ---
+        wait (!rst_i);
+
+        forever begin
+            receive_uart_byte();
+        end
+    end
+
+    // -------------------------------------------------------------------------
+    // 8. Kiểm tra tx_done_o
+    // -------------------------------------------------------------------------
+    always @(posedge tx_done_o) begin
+        $display(
+            "[TX DONE] Byte transmission completed at time = %0t",
+            $time
+        );
+    end
+
+    // -------------------------------------------------------------------------
+    // 9. Kịch bản kiểm thử chính
+    // -------------------------------------------------------------------------
+    initial begin
+
+        // -------------------------------------------------------------
+        // Khởi tạo
+        // -------------------------------------------------------------
         clk_i      = 1'b0;
-        rst_i      = 1'b1; // Tích cực Reset
+        rst_i      = 1'b1;
         tx_start_i = 1'b0;
         data_i     = 8'h00;
+        expected_data = 8'h00;
 
-        // Giữ Reset trong 10 chu kỳ clock rồi nhả
+        // -------------------------------------------------------------
+        // Reset
+        // -------------------------------------------------------------
         #(CLK_PERIOD * 10);
+
         rst_i = 1'b0;
+
         #(CLK_PERIOD * 10);
 
-        $display("=== BAT DAU KIEM THU UART TX ===");
+        $display("");
+        $display("==================================================");
+        $display("          BAT DAU KIEM THU UART TX");
+        $display("==================================================");
+        $display("");
 
-        // --- Bước 2: Gửi Byte thứ nhất (0x35) ---
-        $display("[LANTU 1] Dang gui byte 0x35...");
-        data_i     = 8'h35;       // Nạp dữ liệu 0x35
-        tx_start_i = 1'b1;       // Bật cờ cho phép truyền
-        #(CLK_PERIOD);
-        tx_start_i = 1'b0;       // Tắt cờ start ngay lập tức
+        // =============================================================
+        // TEST 1: 0x35
+        // =============================================================
+        expected_data = 8'h35;
+        data_i        = 8'h35;
 
-        // Chờ đến khi tín hiệu tx_done_o báo đã truyền xong
-        @(posedge tx_done_o);
-        $display("[LANTU 1] Da truyen xong byte 0x35!");
-        #(TICK_PERIOD * 10);     // Nghỉ một chút trước khi gửi tiếp
+        $display("[TEST 1] Dang gui byte 0x35...");
 
-        // --- Bước 3: Gửi Byte thứ hai (0xA9) ---
-        $display("[LANTU 2] Dang gui byte 0xA9...");
-        data_i     = 8'hA9;       // Nạp dữ liệu 0xA9
-        tx_start_i = 1'b1;       // Bật cờ start
+        tx_start_i = 1'b1;
         #(CLK_PERIOD);
         tx_start_i = 1'b0;
 
-        // Chờ truyền xong
+        // Chờ TX hoàn thành
         @(posedge tx_done_o);
-        $display("[LANTU 2] Da truyen xong byte 0xA9!");
-        #(TICK_PERIOD * 10);
 
-        $display("=== HOAN THANH MO PHONG ===");
-        $finish; // Kết thúc mô phỏng
+        $display("[TEST 1] Da truyen xong byte 0x35.");
+
+        // Nghỉ 10 bit
+        #(BIT_TIME * 10);
+
+        // =============================================================
+        // TEST 2: 0xA9
+        // =============================================================
+        expected_data = 8'hA9;
+        data_i        = 8'hA9;
+
+        $display("[TEST 2] Dang gui byte 0xA9...");
+
+        tx_start_i = 1'b1;
+        #(CLK_PERIOD);
+        tx_start_i = 1'b0;
+
+        // Chờ TX hoàn thành
+        @(posedge tx_done_o);
+
+        $display("[TEST 2] Da truyen xong byte 0xA9.");
+
+        // Nghỉ
+        #(BIT_TIME * 10);
+
+        // =============================================================
+        // Tổng kết
+        // =============================================================
+        $display("");
+        $display("==================================================");
+
+        if (error_count == 0) begin
+            $display("          KET QUA: PASS ALL TESTS!");
+        end
+        else begin
+            $display(
+                "          KET QUA: FAIL (%0d loi phat hien)",
+                error_count
+            );
+        end
+
+        $display("==================================================");
+        $display("");
+
+        $finish;
     end
 
 endmodule
