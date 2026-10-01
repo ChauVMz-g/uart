@@ -11,8 +11,7 @@ module uart #(
     parameter [7:0] CRC_VAL       = 8'h07, // Byte CRC
     parameter [7:0] TYPE_LOOPBACK = 8'h01,
     parameter [7:0] TYPE_SENSOR   = 8'h02,
-    parameter       MAX_PAYLOAD   = 32,
-    parameter       FIFO_DEPTH    = 16
+    parameter       MAX_PAYLOAD   = 32
 )(
     input  wire        clk_i,             // Clock hệ thống
     input  wire        rst_i,             // Reset hệ thống (Active High)
@@ -23,7 +22,7 @@ module uart #(
 
     // Giao tiếp UART với Cảm biến (Sensor)
     input  wire        sensor_rx_i,       // Chân RX nhận dữ liệu từ Sensor
-    output wire        sensor_tx_o        // Chân TX gửi lệnh xuống Sensor
+    output wire        sensor_tx_o        // Chân TX gửi lệnh xuống Sensor	 
 );
 
     // =========================================================================
@@ -94,7 +93,7 @@ module uart #(
         .rx_i      (rx_i),
         .s_tick_i  (s_tick),
         .rx_done_o (pc_rx_done),
-        .data_o    (pc_rx_data)
+        .data_o    (pc_rx_data),
     );
 
     // FIFO đệm dữ liệu RX từ PC
