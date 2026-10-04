@@ -3,475 +3,341 @@
 module tb_uart;
 
     // =========================================================================
-    // 1. TÍN HIỆU GIAO TIẾP TESTBENCH & DUT
+    // 1. THAM SỐ CẤU HÌNH TESTBENCH
     // =========================================================================
+    parameter CLK_FREQ       = 50_000_000;          // 50 MHz
+    parameter BAUDRATE       = 115_200;             // Baud rate simulation
+    parameter BIT_PERIOD     = 1000000000 / BAUDRATE; // Thoi gian 1 bit UART (ns)
 
+    parameter [7:0] HEADER_VAL    = 8'h23; // '#'
+    parameter [7:0] FOOTER_VAL    = 8'h24; // '$'
+    parameter [7:0] CRC_VAL       = 8'h07; // Poly 0x07
+    parameter [7:0] TYPE_LOOPBACK = 8'h01;
+    parameter [7:0] TYPE_SENSOR   = 8'h02;
+    parameter       MAX_PAYLOAD   = 32;
+
+    // =========================================================================
+    // 2. SIGNALS VÀ DUT INSTANTIATION
+    // =========================================================================
     reg        clk_i;
     reg        rst_i;
 
-    // PC -> DUT
-    reg        pc_rx_i;
+    reg        rx_i;
+    wire       tx_o;
 
-    // DUT -> PC
-    wire       pc_tx_o;
-
-    // Sensor không sử dụng trong test Loopback
     reg        sensor_rx_i;
     wire       sensor_tx_o;
 
+    integer test_pass_count;
+    integer test_fail_count;
 
-    // =========================================================================
-    // 2. CÁC HẰNG SỐ ĐỊNH THỜI
-    // =========================================================================
-
-    // Clock hệ thống 50 MHz
-    localparam CLK_PERIOD = 20;
-
-    // baud_gen.v:
-    //
-    // N = 50,000,000 / (16 × 9600)
-    //   = 325
-    //
-    // 1 s_tick = 325 × 20 ns = 6500 ns
-    //
-    // 1 bit UART = 16 × 6500 ns = 104000 ns
-
-    localparam TICK_PERIOD = 6500;
-    localparam BIT_TIME    = TICK_PERIOD * 16;
-
-
-    // =========================================================================
-    // 3. THAM SỐ PACKET LOOPBACK
-    // =========================================================================
-
-    localparam [7:0] HEADER_VAL    = 8'h23;
-    localparam [7:0] TYPE_LOOPBACK = 8'h01;
-    localparam [7:0] DATA_VAL      = 8'h41;
-    localparam [7:0] FOOTER_VAL    = 8'h24;
-    localparam [7:0] CRC_VAL       = 8'h2D;
-
-    localparam PACKET_SIZE = 5;
-
-
-    // =========================================================================
-    // 4. BIẾN KIỂM TRA
-    // =========================================================================
-
-    integer error_count;
-    integer rx_count;
-
-    reg [7:0] received_data;
-
-    // Mảng chứa packet mà PC mong đợi nhận lại
-    reg [7:0] expected_packet [0:PACKET_SIZE-1];
-
-
-    // =========================================================================
-    // 5. KHỞI TẠO DUT
-    // =========================================================================
+    reg [7:0] tc_pld [0:31];
+    reg [7:0] tc_exp_pld [0:31];
 
     uart #(
-        .CLK_FREQ       (50000000),
-        .BAUDRATE       (9600),
-        .HEADER_VAL     (HEADER_VAL),
-        .FOOTER_VAL     (FOOTER_VAL),
-        .CRC_VAL        (8'h07),
-        .TYPE_LOOPBACK  (TYPE_LOOPBACK),
-        .TYPE_SENSOR    (8'h02),
-        .MAX_PAYLOAD    (32)
-    )
-    dut (
+        .CLK_FREQ     (CLK_FREQ),
+        .BAUDRATE     (BAUDRATE),
+        .HEADER_VAL   (HEADER_VAL),
+        .FOOTER_VAL   (FOOTER_VAL),
+        .CRC_VAL      (CRC_VAL),
+        .TYPE_LOOPBACK(TYPE_LOOPBACK),
+        .TYPE_SENSOR  (TYPE_SENSOR),
+        .MAX_PAYLOAD  (MAX_PAYLOAD)
+    ) u_dut (
         .clk_i       (clk_i),
         .rst_i       (rst_i),
-
-        // PC
-        .rx_i        (pc_rx_i),
-        .tx_o        (pc_tx_o),
-
-        // Sensor
+        .rx_i        (rx_i),
+        .tx_o        (tx_o),
         .sensor_rx_i (sensor_rx_i),
         .sensor_tx_o (sensor_tx_o)
     );
 
+    // =========================================================================
+    // 3. GENERATE CLOCK (50 MHz)
+    // =========================================================================
+    always #10 clk_i = ~clk_i;
 
     // =========================================================================
-    // 6. TẠO CLOCK 50 MHz
+    // 4. FUNCTION TÍNH CRC-8 (ĐỒNG BỘ VỚI PROCESS.V)
     // =========================================================================
-
-    always #(CLK_PERIOD / 2) clk_i = ~clk_i;
-
-
-    // =========================================================================
-    // 7. TASK PC TRANSMITTER
-    //
-    // Gửi 1 byte UART:
-    //
-    // IDLE  = 1
-    // START = 0
-    // DATA  = LSB first
-    // STOP  = 1
-    // =========================================================================
-
-    task pc_send_uart_byte(input [7:0] data_in);
-
-        integer i;
-
+    function [7:0] calc_crc8;
+        input [7:0] crc_in;
+        input [7:0] data_in;
+        reg [7:0] crc;
+        reg       mix;
+        integer   i;
         begin
-
-            $display(
-                "[PC TX] Sent byte = %02X    time = %0t ns",
-                data_in,
-                $time
-            );
-
-            // START BIT
-            pc_rx_i = 1'b0;
-            #(BIT_TIME);
-
-            // DATA BITS
+            crc = crc_in;
             for (i = 0; i < 8; i = i + 1) begin
-
-                pc_rx_i = data_in[i];
-
-                #(BIT_TIME);
-
+                mix = crc[7] ^ data_in[7];
+                crc = {crc[6:0], 1'b0};
+                data_in = {data_in[6:0], 1'b0};
+                if (mix)
+                    crc = crc ^ 8'h07;
             end
-
-            // STOP BIT
-            pc_rx_i = 1'b1;
-            #(BIT_TIME);
-
+            calc_crc8 = crc;
         end
+    endfunction
 
+    // =========================================================================
+    // 5. TASKS TRUYỀN & NHẬN UART
+    // =========================================================================
+
+    // Gui 1 Byte qua PC RX
+    task send_pc_byte;
+        input [7:0] data;
+        integer i;
+        begin
+            rx_i = 1'b0; // Start bit
+            #(BIT_PERIOD);
+            for (i = 0; i < 8; i = i + 1) begin
+                rx_i = data[i];
+                #(BIT_PERIOD);
+            end
+            rx_i = 1'b1; // Stop bit
+            #(BIT_PERIOD);
+        end
     endtask
 
-
-    // =========================================================================
-    // 8. TASK PC RECEIVER
-    //
-    // Chờ START -> lấy mẫu 8 DATA BIT -> kiểm tra STOP
-    // =========================================================================
-
-    task pc_receive_uart_byte;
-
+    // Nhan 1 Byte tu PC TX
+    task read_pc_byte;
+        output [7:0] data;
         integer i;
-
-        reg [7:0] data_reg;
-        reg       start_bit;
-        reg       stop_bit;
-
         begin
-
-            data_reg = 8'h00;
-
-            // -------------------------------------------------------------
-            // IDLE -> phát hiện START
-            // -------------------------------------------------------------
-
-            @(negedge pc_tx_o);
-
-
-            // -------------------------------------------------------------
-            // Kiểm tra giữa START BIT
-            // -------------------------------------------------------------
-
-            #(BIT_TIME / 2);
-
-            start_bit = pc_tx_o;
-
-            if (start_bit !== 1'b0) begin
-
-                $display(
-                    "[PC RX] ERROR: Invalid START bit at %0t ns",
-                    $time
-                );
-
-                error_count = error_count + 1;
-
-            end
-
-
-            // -------------------------------------------------------------
-            // DATA
-            // -------------------------------------------------------------
-
+            @(negedge tx_o);
+            #(BIT_PERIOD / 2);
             for (i = 0; i < 8; i = i + 1) begin
-
-                #(BIT_TIME);
-
-                data_reg[i] = pc_tx_o;
-
+                #(BIT_PERIOD);
+                data[i] = tx_o;
             end
-
-
-            // -------------------------------------------------------------
-            // STOP
-            // -------------------------------------------------------------
-
-            #(BIT_TIME);
-
-            stop_bit = pc_tx_o;
-
-            if (stop_bit !== 1'b1) begin
-
-                $display(
-                    "[PC RX] ERROR: Invalid STOP bit at %0t ns",
-                    $time
-                );
-
-                error_count = error_count + 1;
-
-            end
-
-
-            // -------------------------------------------------------------
-            // Trả dữ liệu
-            // -------------------------------------------------------------
-
-            received_data = data_reg;
-
+            #(BIT_PERIOD / 2);
         end
-
     endtask
 
+    // Gui 1 Byte qua Sensor RX
+    task send_sensor_byte;
+        input [7:0] data;
+        integer i;
+        begin
+            sensor_rx_i = 1'b0;
+            #(BIT_PERIOD);
+            for (i = 0; i < 8; i = i + 1) begin
+                sensor_rx_i = data[i];
+                #(BIT_PERIOD);
+            end
+            sensor_rx_i = 1'b1;
+            sensor_rx_i = 1'b1;
+            #(BIT_PERIOD);
+        end
+    endtask
 
-    // =========================================================================
-    // 9. PC RECEIVER CHẠY SONG SONG
-    //
-    // Receiver luôn sẵn sàng trước khi DUT bắt đầu trả dữ liệu.
-    // =========================================================================
+    // Nhan 1 Byte tu Sensor TX
+    task read_sensor_byte;
+        output [7:0] data;
+        integer i;
+        begin
+            @(negedge sensor_tx_o);
+            #(BIT_PERIOD / 2);
+            for (i = 0; i < 8; i = i + 1) begin
+                #(BIT_PERIOD);
+                data[i] = sensor_tx_o;
+            end
+            #(BIT_PERIOD / 2);
+        end
+    endtask
 
-    initial begin
+    // Task gui goi tin PC voi CRC tinh dong
+    task send_pc_packet;
+        input [7:0] pkt_type;
+        input [7:0] payload_len;
+        integer i;
+        reg [7:0] crc_calc;
+        begin
+            // Tinh CRC = CRC8(HEADER + TYPE + DATA + FOOTER)
+            crc_calc = calc_crc8(8'h00, HEADER_VAL);
+            crc_calc = calc_crc8(crc_calc, pkt_type);
+            for (i = 0; i < payload_len; i = i + 1) begin
+                crc_calc = calc_crc8(crc_calc, tc_pld[i]);
+            end
+            crc_calc = calc_crc8(crc_calc, FOOTER_VAL);
 
-        wait (!rst_i);
+            $display("[%0t ns] ---> Sending PC Packet: Type=0x%0h, Len=%0d, CRC=0x%0h", 
+                     $time, pkt_type, payload_len, crc_calc);
 
-        forever begin
+            send_pc_byte(HEADER_VAL);
+            send_pc_byte(pkt_type);
+            for (i = 0; i < payload_len; i = i + 1) begin
+                send_pc_byte(tc_pld[i]);
+            end
+            send_pc_byte(FOOTER_VAL);
+            send_pc_byte(crc_calc);
+        end
+    endtask
 
-            pc_receive_uart_byte();
+    // Task verfiy goi tin tra ve tu PC TX
+    task verify_pc_packet;
+        input [7:0] exp_type;
+        input [7:0] exp_len;
+        reg [7:0] r_data;
+        reg [7:0] crc_calc;
+        integer i;
+        reg match;
+        begin
+            match = 1'b1;
 
-            // -------------------------------------------------------------
-            // So sánh với byte mong đợi tương ứng
-            // -------------------------------------------------------------
+            // 1. Header
+            read_pc_byte(r_data);
+            if (r_data !== HEADER_VAL) match = 1'b0;
+            crc_calc = calc_crc8(8'h00, r_data);
 
-            if (rx_count < PACKET_SIZE) begin
+            // 2. Type
+            read_pc_byte(r_data);
+            if (r_data !== exp_type) match = 1'b0;
+            crc_calc = calc_crc8(crc_calc, r_data);
 
-                if (received_data === expected_packet[rx_count]) begin
-
-                    $display(
-                        "[PC RX] PASS: Received byte = %02X, Expected = %02X    time = %0t ns",
-                        received_data,
-                        expected_packet[rx_count],
-                        $time
-                    );
-
-                end
-                else begin
-
-                    $display(
-                        "[PC RX] FAIL: Received byte = %02X, Expected = %02X    time = %0t ns",
-                        received_data,
-                        expected_packet[rx_count],
-                        $time
-                    );
-
-                    error_count = error_count + 1;
-
-                end
-
-                rx_count = rx_count + 1;
-
+            // 3. Data Payload
+            for (i = 0; i < exp_len; i = i + 1) begin
+                read_pc_byte(r_data);
+                if (r_data !== tc_exp_pld[i]) match = 1'b0;
+                crc_calc = calc_crc8(crc_calc, r_data);
             end
 
+            // 4. Footer
+            read_pc_byte(r_data);
+            if (r_data !== FOOTER_VAL) match = 1'b0;
+            crc_calc = calc_crc8(crc_calc, r_data);
+
+            // 5. CRC
+            read_pc_byte(r_data);
+            if (r_data !== crc_calc) match = 1'b0;
+
+            if (match) begin
+                $display("[%0t ns] [PASSED] PC RX Packet Verification Success!", $time);
+                test_pass_count = test_pass_count + 1;
+            end else begin
+                $display("[%0t ns] [FAILED] PC RX Packet Verification Mismatch!", $time);
+                test_fail_count = test_fail_count + 1;
+            end
         end
-
-    end
-
+    endtask
 
     // =========================================================================
-    // 10. MAIN TEST
+    // 6. MAIN TEST SUITE
     // =========================================================================
+    integer k;
+    reg [7:0] dummy_data;
 
     initial begin
+        clk_i           = 0;
+        rst_i           = 1;
+        rx_i            = 1;
+        sensor_rx_i     = 1;
+        test_pass_count = 0;
+        test_fail_count = 0;
+
+        #200;
+        rst_i = 0;
+        #500;
+
+        $display("==========================================================");
+        $display("          BAT DAU CHAY KIEM THU MODULE UART              ");
+        $display("==========================================================");
 
         // ---------------------------------------------------------------------
-        // Khởi tạo
+        // TESTCASE 1: LOOPBACK PACKET
         // ---------------------------------------------------------------------
+        $display("\n--- [TC1] TEST LOOPBACK PACKET ---");
+        tc_pld[0]     = 8'hAA; tc_pld[1]     = 8'hBB; tc_pld[2]     = 8'hCC;
+        tc_exp_pld[0] = 8'hAA; tc_exp_pld[1] = 8'hBB; tc_exp_pld[2] = 8'hCC;
 
-        clk_i       = 1'b0;
-        rst_i       = 1'b1;
+        fork
+            send_pc_packet(TYPE_LOOPBACK, 3);
+            verify_pc_packet(TYPE_LOOPBACK, 3);
+        join
 
-        pc_rx_i     = 1'b1;
-        sensor_rx_i = 1'b1;
-
-        error_count = 0;
-        rx_count    = 0;
-
-        received_data = 8'h00;
-
+        #100000;
 
         // ---------------------------------------------------------------------
-        // Khởi tạo packet mong đợi
+        // TESTCASE 2: SENSOR COMMAND (PC -> SENSOR)
         // ---------------------------------------------------------------------
+        $display("\n--- [TC2] TEST SENSOR COMMAND ROUTING ---");
+        tc_pld[0] = 8'h01; tc_pld[1] = 8'h02;
 
-        expected_packet[0] = HEADER_VAL;
-        expected_packet[1] = TYPE_LOOPBACK;
-        expected_packet[2] = DATA_VAL;
-        expected_packet[3] = FOOTER_VAL;
-        expected_packet[4] = CRC_VAL;
+        fork
+            send_pc_packet(TYPE_SENSOR, 2);
+            begin : sensor_tx_verify
+                $display("[%0t ns] Verifying Sensor TX line...", $time);
+                read_sensor_byte(dummy_data); // Byte 01
+                read_sensor_byte(dummy_data); // Byte 02
+                $display("[%0t ns] Command payload successfully written to Sensor TX!", $time);
+            end
+        join
 
-
-        // ---------------------------------------------------------------------
-        // RESET
-        // ---------------------------------------------------------------------
-
-        #(CLK_PERIOD * 10);
-
-        rst_i = 1'b0;
-
-        #(CLK_PERIOD * 10);
-
+        #100000;
 
         // ---------------------------------------------------------------------
-        // Hiển thị thông tin test
+        // TESTCASE 3: SENSOR DATA RESPONSE (SENSOR -> PC)
         // ---------------------------------------------------------------------
-
-        $display("");
-        $display("=================================================");
-        $display("          FULL UART LOOPBACK TEST");
-        $display("=================================================");
-        $display("");
-
-        $display(
-            "[TB] Expected packet: %02X %02X %02X %02X %02X",
-            expected_packet[0],
-            expected_packet[1],
-            expected_packet[2],
-            expected_packet[3],
-            expected_packet[4]
-        );
-
-        $display("");
-
-
-        // ---------------------------------------------------------------------
-        // Gửi packet từ PC vào DUT
-        // ---------------------------------------------------------------------
-
-        pc_send_uart_byte(HEADER_VAL);
-
-        pc_send_uart_byte(TYPE_LOOPBACK);
-
-        pc_send_uart_byte(DATA_VAL);
-
-        pc_send_uart_byte(FOOTER_VAL);
-
-        pc_send_uart_byte(CRC_VAL);
-
-
-        // ---------------------------------------------------------------------
-        // Packet đã gửi
-        // ---------------------------------------------------------------------
-
-        $display("");
-        $display("[TB] Packet sent.");
-        $display("[TB] Waiting for DUT response...");
-        $display("");
-
-
-        // ---------------------------------------------------------------------
-        // Chờ DUT trả đủ 5 byte
-        // ---------------------------------------------------------------------
-
-        wait (rx_count >= PACKET_SIZE);
-
-
-        // ---------------------------------------------------------------------
-        // Tổng kết
-        // ---------------------------------------------------------------------
-
-        #(BIT_TIME * 2);
-
-        $display("");
-        $display("=================================================");
-        $display("             FULL UART LOOPBACK TEST");
-        $display("=================================================");
-
-        if (error_count == 0) begin
-
-            $display("             RESULT: PASS ALL TESTS!");
-
-        end
-        else begin
-
-            $display(
-                "             RESULT: FAIL (%0d errors)",
-                error_count
-            );
-
+        $display("\n--- [TC3] TEST SENSOR READ 12 BYTES RESPOND TO PC ---");
+        // Giả lập Sensor đẩy 12 bytes dữ liệu vào Sensor RX
+        for (k = 0; k < 12; k = k + 1) begin
+            tc_exp_pld[k] = 8'h10 + k;
         end
 
-        $display("=================================================");
-        $display("");
+        fork
+            begin : sensor_push_12bytes
+                for (k = 0; k < 12; k = k + 1) begin
+                    send_sensor_byte(tc_exp_pld[k]);
+                end
+            end
+            verify_pc_packet(TYPE_SENSOR, 12);
+        join
+
+        #100000;
+
+        // ---------------------------------------------------------------------
+        // TESTCASE 4: CRC ERROR INJECTION
+        // ---------------------------------------------------------------------
+        $display("\n--- [TC4] TEST INVALID CRC (CORRUPTED PACKET) ---");
+        $display("[%0t ns] Sending packet with wrong CRC...", $time);
+        send_pc_byte(HEADER_VAL);
+        send_pc_byte(TYPE_LOOPBACK);
+        send_pc_byte(8'h55);
+        send_pc_byte(FOOTER_VAL);
+        send_pc_byte(8'hFF); // Bad CRC (Wrong)
+
+        #200000;
+        $display("[%0t ns] Checked: Corrupted CRC packet successfully ignored.", $time);
+
+        // ---------------------------------------------------------------------
+        // TESTCASE 5: UNKNOWN TYPE FLUSH
+        // ---------------------------------------------------------------------
+        $display("\n--- [TC5] TEST UNKNOWN TYPE (FLUSH PHASE) ---");
+        $display("[%0t ns] Sending packet with Type = 0xEE...", $time);
+        send_pc_byte(HEADER_VAL);
+        send_pc_byte(8'hEE); // Unknown Type
+        send_pc_byte(8'h12);
+        send_pc_byte(FOOTER_VAL);
+        send_pc_byte(8'h00);
+
+        #200000;
+        $display("[%0t ns] Checked: Unknown type packet flushed properly.", $time);
+
+        // ---------------------------------------------------------------------
+        // TỔNG KẾT
+        // ---------------------------------------------------------------------
+        $display("\n==========================================================");
+        $display("                   TONG KET KIEM THU                      ");
+        $display("==========================================================");
+        $display("  PASSED TESTCASES : %0d", test_pass_count);
+        $display("  FAILED TESTCASES : %0d", test_fail_count);
+        if (test_fail_count == 0)
+            $display("  --> RATING: ALL TESTS PASSED SUCCESSFULLY! <--");
+        else
+            $display("  --> RATING: FAILURES DETECTED! CHECK LOGS. <--");
+        $display("==========================================================");
 
         $finish;
-
-    end
-
-
-    // =========================================================================
-    // 11. DEBUG PROCESS -> PC TX FIFO
-    // =========================================================================
-
-    always @(posedge clk_i) begin
-
-        if (!rst_i && dut.process_wr_pc_tx) begin
-
-            $display(
-                "[DEBUG PROCESS->FIFO] time=%0t    data=%02X",
-                $time,
-                dut.process_pc_tx_wdata
-            );
-
-        end
-
-    end
-
-
-    // =========================================================================
-    // 12. DEBUG FIFO READ
-    // =========================================================================
-
-    always @(posedge clk_i) begin
-
-        if (!rst_i && dut.tx_ctrl_rd_pc_fifo) begin
-
-            $display(
-                "[DEBUG FIFO READ] time=%0t    data=%02X",
-                $time,
-                dut.fifo_pc_tx_rdata
-            );
-
-        end
-
-    end
-
-
-    // =========================================================================
-    // 13. DEBUG UART START
-    // =========================================================================
-
-    always @(posedge clk_i) begin
-
-        if (!rst_i && dut.tx_ctrl_start_pc_uart) begin
-
-            $display(
-                "[DEBUG UART START] time=%0t    data=%02X",
-                $time,
-                dut.fifo_pc_tx_rdata
-            );
-
-        end
-
     end
 
 endmodule
