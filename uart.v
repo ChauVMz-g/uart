@@ -1,11 +1,11 @@
 module uart #(
     // =========================================================================
-    // THAM SỐ CẤU HÌNH HỆ THỐNG & BAUD RATE
+    // THAM Sá» Cáº¤U HÃŒNH Há»† THá»NG & BAUD RATE
     // =========================================================================
-    parameter CLK_FREQ       = 50000000, // Tần số clock hệ thống (Hz) - 50 MHz
-    parameter BAUDRATE       = 9600,     // Tốc độ truyền Baud Rate (bps) - 9600
+    parameter CLK_FREQ       = 50000000, // Táº§n sá»‘ clock há»‡ thá»‘ng (Hz) - 50 MHz
+    parameter BAUDRATE       = 9600,     // Tá»‘c Ä‘á»™ truyá»n Baud Rate (bps) - 9600
 
-    // Tham số cấu hình khung gói tin & Buffer
+    // Tham sá»‘ cáº¥u hÃ¬nh khung gÃ³i tin & Buffer
     parameter [7:0] HEADER_VAL    = 8'h23, // Byte '#'
     parameter [7:0] FOOTER_VAL    = 8'h24, // Byte '$'
     parameter [7:0] CRC_VAL       = 8'h07, // Byte CRC
@@ -13,33 +13,36 @@ module uart #(
     parameter [7:0] TYPE_SENSOR   = 8'h02,
     parameter       MAX_PAYLOAD   = 32
 )(
-    input  wire        clk_i,             // Clock hệ thống
-    input  wire        rst_i,             // Reset hệ thống (Active High)
+    input  wire        clk_i,             // Clock há»‡ thá»‘ng
+    input  wire        rst_i,             // Reset há»‡ thá»‘ng (Active High)
 
-    // Giao tiếp UART với Máy tính (PC / Host)
-    input  wire        rx_i,              // Chân RX nhận dữ liệu từ PC
-    output wire        tx_o,              // Chân TX gửi dữ liệu về PC
+    // Giao tiáº¿p UART vá»›i MÃ¡y tÃ­nh (PC / Host)
+    input  wire        rx_i,              // ChÃ¢n RX nháº­n dá»¯ liá»‡u tá»« PC
+    output wire        tx_o,              // ChÃ¢n TX gá»­i dá»¯ liá»‡u vá» PC
 
-    // Giao tiếp UART với Cảm biến (Sensor)
-    input  wire        sensor_rx_i,       // Chân RX nhận dữ liệu từ Sensor
-    output wire        sensor_tx_o        // Chân TX gửi lệnh xuống Sensor	 
+    // Giao tiáº¿p UART vá»›i Cáº£m biáº¿n (Sensor)
+    input  wire        sensor_rx_i,       // ChÃ¢n RX nháº­n dá»¯ liá»‡u tá»« Sensor
+    output wire        sensor_tx_o,        // ChÃ¢n TX gá»­i lá»‡nh xuá»‘ng Sensor	
+
+    //Hiá»ƒn thá»‹ máº¡ch Ä‘ang hoáº¡t dá»™ng hay chÆ°a
+    output wire        led_rst_status_o  // Náº¿u rst tÃ­ch cá»±c cao, thÃ¬ led táº¯t
 );
 
     // =========================================================================
-    // DÂY DẪN NỘI BỘ (INTERNAL WIRES)
+    // DÃ‚Y DáºªN Ná»˜I Bá»˜ (INTERNAL WIRES)
     // =========================================================================
 
-    // 1. Tín hiệu Baud Rate Generator (Sampling Tick 16x)
+    // 1. TÃ­n hiá»‡u Baud Rate Generator (Sampling Tick 16x)
     wire       s_tick;
 
-    // 2. Kênh PC RX (PC -> UART RX -> FIFO PC RX -> Process)
+    // 2. KÃªnh PC RX (PC -> UART RX -> FIFO PC RX -> Process)
     wire       pc_rx_done;
     wire [7:0] pc_rx_data;
     wire       fifo_pc_rx_empty;
     wire       process_rd_pc_rx;
     wire [7:0] fifo_pc_rx_rdata;
 
-    // 3. Kênh PC TX (Process -> FIFO PC TX -> TX Controller -> UART TX -> PC)
+    // 3. KÃªnh PC TX (Process -> FIFO PC TX -> TX Controller -> UART TX -> PC)
     wire       fifo_pc_tx_full;
     wire       fifo_pc_tx_empty;
     wire       process_wr_pc_tx;
@@ -49,7 +52,7 @@ module uart #(
     wire       tx_ctrl_start_pc_uart;
     wire       pc_uart_tx_done;
 
-    // 4. Kênh Sensor TX (Process -> FIFO Sensor TX -> TX Controller -> UART Sensor TX -> Sensor)
+    // 4. KÃªnh Sensor TX (Process -> FIFO Sensor TX -> TX Controller -> UART Sensor TX -> Sensor)
     wire       fifo_sensor_tx_full;
     wire       fifo_sensor_tx_empty;
     wire       process_wr_sensor_tx;
@@ -59,20 +62,23 @@ module uart #(
     wire       tx_ctrl_start_sensor_uart;
     wire       sensor_uart_tx_done;
 
-    // 5. Kênh Sensor RX (Sensor -> UART Sensor RX -> FIFO Sensor RX -> Process)
+    // 5. KÃªnh Sensor RX (Sensor -> UART Sensor RX -> FIFO Sensor RX -> Process)
     wire       sensor_rx_done;
     wire [7:0] sensor_rx_data;
     wire       fifo_sensor_rx_empty;
     wire       process_rd_sensor_rx;
     wire [7:0] fifo_sensor_rx_rdata;
 
+    //6. Led hiá»ƒn thá»‹ trÃ¬nh tráº¡ng hoáº¡t Ä‘á»ng cá»§a máº¡ch
+    //Náº¿u rst tÃ­ch cá»±c tháº¥p, led sÃ¡ng
+    assign     led_rst_status_o = rst_i;
 
     // =========================================================================
-    // INSTANTIATION CÁC KHỐI CON
+    // INSTANTIATION CÃC KHá»I CON
     // =========================================================================
 
     // -------------------------------------------------------------------------
-    // 1. BAUD RATE GENERATOR (Dùng chung cho cả 2 kênh UART PC & Sensor)
+    // 1. BAUD RATE GENERATOR (DÃ¹ng chung cho cáº£ 2 kÃªnh UART PC & Sensor)
     // -------------------------------------------------------------------------
     baud_gen #(
         .CLK_FREQ (CLK_FREQ),
@@ -84,19 +90,19 @@ module uart #(
     );
 
     // -------------------------------------------------------------------------
-    // 2. KÊNH UART PC (NHẬN & GỬI DỮ LIỆU VỚI PC)
+    // 2. KÃŠNH UART PC (NHáº¬N & Gá»¬I Dá»® LIá»†U Vá»šI PC)
     // -------------------------------------------------------------------------
-    // UART RX từ PC
+    // UART RX tá»« PC
     rx u_rx_pc (
         .clk_i     (clk_i),
         .rst_i     (rst_i),
         .rx_i      (rx_i),
         .s_tick_i  (s_tick),
         .rx_done_o (pc_rx_done),
-        .data_o    (pc_rx_data),
+        .data_o    (pc_rx_data)
     );
 
-    // FIFO đệm dữ liệu RX từ PC
+    // FIFO Ä‘á»‡m dá»¯ liá»‡u RX tá»« PC
     fifo #(
         .DATA_WIDTH(8),
         .ADDR_WIDTH(4) // DEPTH = 16
@@ -111,7 +117,7 @@ module uart #(
         .full_o    ()
     );
 
-    // FIFO đệm dữ liệu TX gửi về PC
+    // FIFO Ä‘á»‡m dá»¯ liá»‡u TX gá»­i vá» PC
     fifo #(
         .DATA_WIDTH(8),
         .ADDR_WIDTH(4)
@@ -126,7 +132,7 @@ module uart #(
         .full_o    (fifo_pc_tx_full)
     );
 
-    // Điều khiển Handshake đọc FIFO TX PC & phát UART TX
+    // Äiá»u khiá»ƒn Handshake Ä‘á»c FIFO TX PC & phÃ¡t UART TX
     tx_controller u_tx_controller_pc (
         .clk_i        (clk_i),
         .rst_i        (rst_i),
@@ -136,7 +142,7 @@ module uart #(
         .uart_start_o (tx_ctrl_start_pc_uart)
     );
 
-    // UART TX gửi về PC
+    // UART TX gá»­i vá» PC
     tx u_tx_pc (
         .clk_i      (clk_i),
         .rst_i      (rst_i),
@@ -149,7 +155,7 @@ module uart #(
     );
 
     // -------------------------------------------------------------------------
-    // 3. KHỐI XỬ LÝ & GIẢI MÃ GÓI TIN (PROCESS)
+    // 3. KHá»I Xá»¬ LÃ & GIáº¢I MÃƒ GÃ“I TIN (PROCESS)
     // -------------------------------------------------------------------------
     process #(
         .HEADER_VAL    (HEADER_VAL),
@@ -162,31 +168,31 @@ module uart #(
         .clk_i             (clk_i),
         .rst_i             (rst_i),
 
-        // Đọc từ FIFO RX PC
+        // Äá»c tá»« FIFO RX PC
         .fifo_rx_empty_i   (fifo_pc_rx_empty),
         .fifo_rx_rd_o      (process_rd_pc_rx),
         .fifo_rx_data_i    (fifo_pc_rx_rdata),
 
-        // Ghi vào FIFO TX PC
+        // Ghi vÃ o FIFO TX PC
         .fifo_tx_full_i    (fifo_pc_tx_full),
         .fifo_tx_wr_o      (process_wr_pc_tx),
         .fifo_tx_data_o    (process_pc_tx_wdata),
 
-        // Ghi vào FIFO TX Sensor
+        // Ghi vÃ o FIFO TX Sensor
         .sensor_tx_full_i  (fifo_sensor_tx_full),
         .sensor_tx_wr_o    (process_wr_sensor_tx),
         .sensor_tx_data_o  (process_sensor_tx_wdata),
 
-        // Đọc từ FIFO RX Sensor
+        // Äá»c tá»« FIFO RX Sensor
         .sensor_rx_empty_i (fifo_sensor_rx_empty),
         .sensor_rx_rd_o    (process_rd_sensor_rx),
         .sensor_rx_data_i  (fifo_sensor_rx_rdata)
     );
 
     // -------------------------------------------------------------------------
-    // 4. KÊNH UART SENSOR (NHẬN & GỬI DỮ LIỆU VỚI CẢM BIẾN)
+    // 4. KÃŠNH UART SENSOR (NHáº¬N & Gá»¬I Dá»® LIá»†U Vá»šI Cáº¢M BIáº¾N)
     // -------------------------------------------------------------------------
-    // FIFO đệm lệnh TX gửi xuống Sensor
+    // FIFO Ä‘á»‡m lá»‡nh TX gá»­i xuá»‘ng Sensor
     fifo #(
         .DATA_WIDTH(8),
         .ADDR_WIDTH(4)
@@ -201,7 +207,7 @@ module uart #(
         .full_o    (fifo_sensor_tx_full)
     );
 
-    // Điều khiển Handshake đọc FIFO TX Sensor & phát UART TX
+    // Äiá»u khiá»ƒn Handshake Ä‘á»c FIFO TX Sensor & phÃ¡t UART TX
     tx_controller u_tx_controller_sensor (
         .clk_i        (clk_i),
         .rst_i        (rst_i),
@@ -211,7 +217,7 @@ module uart #(
         .uart_start_o (tx_ctrl_start_sensor_uart)
     );
 
-    // UART TX gửi xuống Sensor
+    // UART TX gá»­i xuá»‘ng Sensor
     tx u_tx_sensor (
         .clk_i      (clk_i),
         .rst_i      (rst_i),
@@ -223,7 +229,7 @@ module uart #(
         .tx_busy_o  ()
     );
 
-    // UART RX nhận từ Sensor
+    // UART RX nháº­n tá»« Sensor
     rx u_rx_sensor (
         .clk_i     (clk_i),
         .rst_i     (rst_i),
@@ -233,7 +239,7 @@ module uart #(
         .data_o    (sensor_rx_data)
     );
 
-    // FIFO đệm dữ liệu RX từ Sensor
+    // FIFO Ä‘á»‡m dá»¯ liá»‡u RX tá»« Sensor
     fifo #(
         .DATA_WIDTH(8),
         .ADDR_WIDTH(4)
