@@ -64,24 +64,16 @@ module process #(
 
         begin
             crc = crc_in;
-
             for (i = 0; i < 8; i = i + 1) begin
-
                 mix = crc[7] ^ data_in[7];
-
                 crc = {crc[6:0], 1'b0};
-
                 data_in = {data_in[6:0], 1'b0};
-
                 if (mix)
                     crc = crc ^ 8'h07;
-
             end
-
             calc_crc8 = crc;
         end
     endfunction
-
 
     // ============================================================
     // MAIN FSM
@@ -103,7 +95,6 @@ module process #(
         ST_SEND_DATA      = 4'd10,
         ST_SEND_FTR       = 4'd11,
         ST_SEND_CRC       = 4'd12;
-
 
     // ============================================================
     // RX PHASE - Nhan packet tu PC
@@ -138,9 +129,7 @@ module process #(
     // MAIN SEQUENTIAL BLOCK
     // ============================================================
     always @(posedge clk_i or posedge rst_i) begin
-
         if (rst_i) begin
-
             // ----------------------------------------------------
             // RESET FSM
             // ----------------------------------------------------
@@ -172,7 +161,6 @@ module process #(
 
         end
         else begin
-
             // ====================================================
             // DEFAULT: cac pulse WR/RD chi ton tai 1 clock
             // ====================================================
@@ -181,13 +169,10 @@ module process #(
             sensor_tx_wr_o <= 1'b0;
             sensor_rx_rd_o <= 1'b0;
 
-
             // ====================================================
             // FSM
             // ====================================================
             case (state)
-
-
                 // =================================================
                 // 1. IDLE
                 //
@@ -195,133 +180,84 @@ module process #(
                 // Neu khong co lenh PC thi kiem tra Sensor FIFO.
                 // =================================================
                 ST_IDLE: begin
-
                     byte_cnt <= 8'h00;
                     tx_cnt   <= 8'h00;
-
                     if (!fifo_rx_empty_i) begin
-
                         rx_phase <= PHASE_HDR;
-
                         state <= ST_REQ_BYTE;
-
                     end
                     else if (!sensor_rx_empty_i) begin
-
                         // Bat dau doc 12 byte tu Sensor
                         byte_cnt <= 8'h00;
-
                         state <= ST_SENS_READ_REQ;
-
                     end
-
                 end
-
 
                 // =================================================
                 // 2. REQUEST BYTE FROM PC FIFO
                 // =================================================
                 ST_REQ_BYTE: begin
-
                     if (!fifo_rx_empty_i) begin
-
                         fifo_rx_rd_o <= 1'b1;
-
                         state <= ST_WAIT_BYTE;
-
                     end
-
                 end
-
 
                 // =================================================
                 // 3. WAIT 1 CLOCK FOR SYNCHRONOUS FIFO READ
                 // =================================================
                 ST_WAIT_BYTE: begin
-
                     state <= ST_PROC_BYTE;
-
                 end
-
 
                 // =================================================
                 // 4. PROCESS BYTE FROM PC
                 // =================================================
                 ST_PROC_BYTE: begin
-
                     case (rx_phase)
-
-
                         // =================================================
                         // HEADER
                         // =================================================
                         PHASE_HDR: begin
-
                             if (fifo_rx_data_i == HEADER_VAL) begin
-
                                 // Bat dau CRC tu HEADER
-                                crc_reg <= calc_crc8(
-                                    8'h00,
-                                    HEADER_VAL
-                                );
-
+                                crc_reg <= calc_crc8(8'h00, HEADER_VAL);
                                 rx_phase <= PHASE_TYPE;
-
                                 state <= ST_REQ_BYTE;
-
                             end
                             else begin
-
                                 // Header sai
                                 state <= ST_IDLE;
-
                             end
-
                         end
-
-
                         // =================================================
                         // TYPE
                         // =================================================
                         PHASE_TYPE: begin
-
                             type_reg <= fifo_rx_data_i;
-
                             // CRC = CRC(HEADER + TYPE)
                             crc_reg <= calc_crc8(
                                 crc_reg,
                                 fifo_rx_data_i
                             );
 
-
                             if (
                                 fifo_rx_data_i == TYPE_LOOPBACK ||
                                 fifo_rx_data_i == TYPE_SENSOR
                             ) begin
-
                                 byte_cnt <= 8'h00;
-
                                 rx_phase <= PHASE_DATA;
-
                             end
                             else begin
-
                                 rx_phase <= PHASE_FLUSH;
-
                             end
-
                             state <= ST_REQ_BYTE;
-
                         end
-
-
                         // =================================================
                         // DATA
                         // =================================================
                         PHASE_DATA: begin
-
                             if (fifo_rx_data_i == FOOTER_VAL) begin
-
                                 // Footer da den
                                 // CRC = CRC(HEADER + TYPE + DATA + FOOTER)
                                 crc_reg <= calc_crc8(
@@ -330,30 +266,18 @@ module process #(
                                 );
 
                                 rx_phase <= PHASE_CRC;
-
                             end
                             else begin
-
                                 if (byte_cnt < MAX_PAYLOAD) begin
-
-                                    data_buffer[byte_cnt]
-                                        <= fifo_rx_data_i;
-
-                                    byte_cnt
-                                        <= byte_cnt + 1'b1;
-
+                                    data_buffer[byte_cnt] <= fifo_rx_data_i;
+                                    byte_cnt <= byte_cnt + 1'b1;
                                 end
 
                                 // Them DATA vao CRC
-                                crc_reg <= calc_crc8(
-                                    crc_reg,
-                                    fifo_rx_data_i
+                                crc_reg <= calc_crc8(crc_reg, fifo_rx_data_i
                                 );
-
                             end
-
                             state <= ST_REQ_BYTE;
-
                         end
 
 
@@ -361,76 +285,47 @@ module process #(
                         // CRC FROM PC
                         // =================================================
                         PHASE_CRC: begin
-
                             if (fifo_rx_data_i == crc_reg) begin
-
                                 // CRC dung
                                 if (type_reg == TYPE_LOOPBACK) begin
-
                                     send_type_reg <= TYPE_LOOPBACK;
-
                                     tx_cnt <= 8'h00;
-
                                     state <= ST_SEND_HDR;
-
                                 end
                                 else if (type_reg == TYPE_SENSOR) begin
-
                                     tx_cnt <= 8'h00;
-
                                     state <= ST_SENS_EXEC;
-
                                 end
                                 else begin
-
                                     state <= ST_IDLE;
-
                                 end
-
                             end
                             else begin
-
                                 // CRC sai
                                 state <= ST_IDLE;
-
                             end
-
                         end
-
 
                         // =================================================
                         // FLUSH PACKET SAI TYPE
                         // =================================================
                         PHASE_FLUSH: begin
-
                             if (fifo_rx_data_i == FOOTER_VAL)
                                 rx_phase <= PHASE_FLUSH_CRC;
-
                             state <= ST_REQ_BYTE;
-
                         end
-
 
                         // =================================================
                         // BO QUA CRC CUA PACKET SAI TYPE
                         // =================================================
                         PHASE_FLUSH_CRC: begin
-
                             state <= ST_IDLE;
-
                         end
-
-
                         default: begin
-
                             state <= ST_IDLE;
-
                         end
-
                     endcase
-
                 end
-
 
                 // =================================================
                 // 5. GUI DATA LEN SENSOR
@@ -438,35 +333,20 @@ module process #(
                 // data_buffer[0..byte_cnt-1]
                 // =================================================
                 ST_SENS_EXEC: begin
-
                     if (tx_cnt < byte_cnt) begin
-
                         if (!sensor_tx_full_i) begin
-
-                            sensor_tx_data_o
-                                <= data_buffer[tx_cnt];
-
-                            sensor_tx_wr_o
-                                <= 1'b1;
-
-                            tx_cnt
-                                <= tx_cnt + 1'b1;
-
+                            sensor_tx_data_o <= data_buffer[tx_cnt];
+                            sensor_tx_wr_o <= 1'b1;
+                            tx_cnt <= tx_cnt + 1'b1;
                         end
-
                     end
                     else begin
-
                         // Da gui xong lenh Sensor
                         byte_cnt <= 8'h00;
                         tx_cnt   <= 8'h00;
-
                         state <= ST_IDLE;
-
                     end
-
                 end
-
 
                 // =================================================
                 // 6. REQUEST READ FROM SENSOR RX FIFO
@@ -474,44 +354,28 @@ module process #(
                 // Doc DUNG 12 BYTE.
                 // =================================================
                 ST_SENS_READ_REQ: begin
-
                     if (byte_cnt < SENSOR_LEN) begin
-
                         if (!sensor_rx_empty_i) begin
-
                             sensor_rx_rd_o <= 1'b1;
-
                             state <= ST_SENS_READ_WAIT;
-
                         end
-
                     end
                     else begin
-
                         // -----------------------------------------
                         // DA DOC DU 12 BYTE
                         // -----------------------------------------
-
                         send_type_reg <= TYPE_SENSOR;
-
                         tx_cnt <= 8'h00;
-
                         state <= ST_SEND_HDR;
-
                     end
-
                 end
-
 
                 // =================================================
                 // 7. WAIT FOR SYNCHRONOUS SENSOR FIFO
                 // =================================================
                 ST_SENS_READ_WAIT: begin
-
                     state <= ST_SENS_READ_STO;
-
                 end
-
 
                 // =================================================
                 // 8. STORE ONE SENSOR BYTE
@@ -522,69 +386,41 @@ module process #(
                 // data_buffer[11] = Sensor byte 11
                 // =================================================
                 ST_SENS_READ_STO: begin
-
                     if (byte_cnt < SENSOR_LEN) begin
-
-                        data_buffer[byte_cnt]
-                            <= sensor_rx_data_i;
-
-                        byte_cnt
-                            <= byte_cnt + 1'b1;
-
+                        data_buffer[byte_cnt] <= sensor_rx_data_i;
+                        byte_cnt <= byte_cnt + 1'b1;
                     end
-
                     state <= ST_SENS_READ_REQ;
-
                 end
-
 
                 // =================================================
                 // 9. SEND HEADER TO PC
                 // =================================================
                 ST_SEND_HDR: begin
-
                     if (!fifo_tx_full_i) begin
-
                         fifo_tx_data_o <= HEADER_VAL;
-
                         fifo_tx_wr_o <= 1'b1;
-
                         // CRC = CRC(HEADER)
-                        crc_reg <= calc_crc8(
-                            8'h00,
-                            HEADER_VAL
-                        );
-
+                        crc_reg <= calc_crc8(8'h00, HEADER_VAL);
                         state <= ST_SEND_TYPE;
-
                     end
-
                 end
-
 
                 // =================================================
                 // 10. SEND TYPE TO PC
                 // =================================================
                 ST_SEND_TYPE: begin
-
                     if (!fifo_tx_full_i) begin
-
                         fifo_tx_data_o <= send_type_reg;
-
                         fifo_tx_wr_o <= 1'b1;
-
                         // CRC = CRC(HEADER + TYPE)
                         crc_reg <= calc_crc8(
                             crc_reg,
                             send_type_reg
                         );
-
                         state <= ST_SEND_DATA;
-
                     end
-
                 end
-
 
                 // =================================================
                 // 11. SEND DATA TO PC
@@ -593,40 +429,21 @@ module process #(
                 // DATA[0] -> DATA[11]
                 // =================================================
                 ST_SEND_DATA: begin
-
                     if (tx_cnt < byte_cnt) begin
-
                         if (!fifo_tx_full_i) begin
-
-                            fifo_tx_data_o
-                                <= data_buffer[tx_cnt];
-
-                            fifo_tx_wr_o
-                                <= 1'b1;
+                            fifo_tx_data_o <= data_buffer[tx_cnt];
+                            fifo_tx_wr_o <= 1'b1;
 
                             // CRC them DATA
-                            crc_reg
-                                <= calc_crc8(
-                                    crc_reg,
-                                    data_buffer[tx_cnt]
-                                );
-
-                            tx_cnt
-                                <= tx_cnt + 1'b1;
-
+                            crc_reg <= calc_crc8(crc_reg, data_buffer[tx_cnt]);
+                            tx_cnt <= tx_cnt + 1'b1;
                         end
-
                     end
                     else begin
-
                         // Da gui het DATA
                         state <= ST_SEND_FTR;
-
                     end
-
                 end
-
-
                 // =================================================
                 // 12. SEND FOOTER
                 //
@@ -648,56 +465,32 @@ module process #(
                 // )
                 // =================================================
                 ST_SEND_FTR: begin
-
                     if (!fifo_tx_full_i) begin
-
                         fifo_tx_data_o <= FOOTER_VAL;
-
                         fifo_tx_wr_o <= 1'b1;
-
-                        crc_reg <= calc_crc8(
-                            crc_reg,
-                            FOOTER_VAL
-                        );
-
+                        crc_reg <= calc_crc8(crc_reg, FOOTER_VAL);
                         state <= ST_SEND_CRC;
-
                     end
-
                 end
-
 
                 // =================================================
                 // 13. SEND CRC
                 // =================================================
                 ST_SEND_CRC: begin
-
                     if (!fifo_tx_full_i) begin
-
                         fifo_tx_data_o <= crc_reg;
-
                         fifo_tx_wr_o <= 1'b1;
-
                         state <= ST_IDLE;
-
                     end
-
                 end
-
 
                 // =================================================
                 // DEFAULT
                 // =================================================
                 default: begin
-
                     state <= ST_IDLE;
-
                 end
-
             endcase
-
         end
-
     end
-
 endmodule
