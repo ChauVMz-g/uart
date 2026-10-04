@@ -236,15 +236,10 @@ module process #(
                         PHASE_TYPE: begin
                             type_reg <= fifo_rx_data_i;
                             // CRC = CRC(HEADER + TYPE)
-                            crc_reg <= calc_crc8(
-                                crc_reg,
-                                fifo_rx_data_i
-                            );
+                            crc_reg <= calc_crc8(crc_reg, fifo_rx_data_i);
 
-                            if (
-                                fifo_rx_data_i == TYPE_LOOPBACK ||
-                                fifo_rx_data_i == TYPE_SENSOR
-                            ) begin
+                            if (fifo_rx_data_i == TYPE_LOOPBACK || fifo_rx_data_i == TYPE_SENSOR) 
+                            begin
                                 byte_cnt <= 8'h00;
                                 rx_phase <= PHASE_DATA;
                             end
