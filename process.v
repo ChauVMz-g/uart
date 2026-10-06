@@ -6,8 +6,8 @@ module process #(
     parameter [7:0] TYPE_LOOPBACK = 8'h01,
     parameter [7:0] TYPE_SENSOR   = 8'h02,
 
-    parameter       MAX_PAYLOAD   = 32,
-    parameter [7:0] SENSOR_LEN    = 8'd12
+    parameter       MAX_PAYLOAD   = 1024,
+    parameter [7:0] SENSOR_LEN    = 8'd13
 )(
     input  wire        clk_i,
     input  wire        rst_i,
@@ -119,8 +119,8 @@ module process #(
 
     reg [7:0] data_buffer [0:MAX_PAYLOAD-1];
 
-    reg [7:0] byte_cnt;
-    reg [7:0] tx_cnt;
+    reg [11:0] byte_cnt;
+    reg [11:0] tx_cnt;
 
     reg [7:0] crc_reg;
 
@@ -154,8 +154,8 @@ module process #(
             type_reg         <= 8'h00;
             send_type_reg    <= 8'h00;
 
-            byte_cnt         <= 8'h00;
-            tx_cnt           <= 8'h00;
+            byte_cnt         <= 11'h00;
+            tx_cnt           <= 11'h00;
 
             crc_reg          <= 8'h00;
 
@@ -180,15 +180,15 @@ module process #(
                 // Neu khong co lenh PC thi kiem tra Sensor FIFO.
                 // =================================================
                 ST_IDLE: begin
-                    byte_cnt <= 8'h00;
-                    tx_cnt   <= 8'h00;
+                    byte_cnt <= 11'h00;
+                    tx_cnt   <= 11'h00;
                     if (!fifo_rx_empty_i) begin
                         rx_phase <= PHASE_HDR;
                         state <= ST_REQ_BYTE;
                     end
                     else if (!sensor_rx_empty_i) begin
                         // Bat dau doc 12 byte tu Sensor
-                        byte_cnt <= 8'h00;
+                        byte_cnt <= 11'h00;
                         state <= ST_SENS_READ_REQ;
                     end
                 end
@@ -240,7 +240,7 @@ module process #(
 
                             if (fifo_rx_data_i == TYPE_LOOPBACK || fifo_rx_data_i == TYPE_SENSOR) 
                             begin
-                                byte_cnt <= 8'h00;
+                                byte_cnt <= 11'h00;
                                 rx_phase <= PHASE_DATA;
                             end
                             else begin
@@ -284,11 +284,11 @@ module process #(
                                 // CRC dung
                                 if (type_reg == TYPE_LOOPBACK) begin
                                     send_type_reg <= TYPE_LOOPBACK;
-                                    tx_cnt <= 8'h00;
+                                    tx_cnt <= 11'h00;
                                     state <= ST_SEND_HDR;
                                 end
                                 else if (type_reg == TYPE_SENSOR) begin
-                                    tx_cnt <= 8'h00;
+                                    tx_cnt <= 11'h00;
                                     state <= ST_SENS_EXEC;
                                 end
                                 else begin
@@ -337,8 +337,8 @@ module process #(
                     end
                     else begin
                         // Da gui xong lenh Sensor
-                        byte_cnt <= 8'h00;
-                        tx_cnt   <= 8'h00;
+                        byte_cnt <= 11'h00;
+                        tx_cnt   <= 11'h00;
                         state <= ST_IDLE;
                     end
                 end
@@ -360,7 +360,7 @@ module process #(
                         // DA DOC DU 12 BYTE
                         // -----------------------------------------
                         send_type_reg <= TYPE_SENSOR;
-                        tx_cnt <= 8'h00;
+                        tx_cnt <= 11'h00;
                         state <= ST_SEND_HDR;
                     end
                 end
