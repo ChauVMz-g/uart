@@ -64,11 +64,11 @@ set_global_assignment -name VERILOG_FILE testbench/tb_tx.v
 set_global_assignment -name STRATIX_DEVICE_IO_STANDARD "3.3-V LVTTL"
 set_location_assignment PIN_N2 -to clk_i
 set_location_assignment PIN_AD13 -to rst_i
-set_location_assignment PIN_F23 -to rx_i
-set_location_assignment PIN_N18 -to tx_o
+set_location_assignment PIN_C25 -to rx_i
+set_location_assignment PIN_B25 -to tx_o
 set_global_assignment -name USE_CONFIGURATION_DEVICE ON
 set_global_assignment -name RESERVE_ALL_UNUSED_PINS "AS INPUT TRI-STATED WITH WEAK PULL-UP"
 set_location_assignment PIN_AD23 -to led_rst_status_o
-set_location_assignment PIN_C25 -to sensor_rx_i
-set_location_assignment PIN_B25 -to sensor_tx_o
+set_location_assignment PIN_N1 -to sensor_rx_i
+set_location_assignment PIN_AA13 -to sensor_tx_o
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
