@@ -11,7 +11,10 @@ module uart #(
     parameter [7:0] CRC_VAL       = 8'h07, // Byte CRC
     parameter [7:0] TYPE_LOOPBACK = 8'h01,
     parameter [7:0] TYPE_SENSOR   = 8'h02,
-    parameter       MAX_PAYLOAD   = 32
+    parameter       MAX_PAYLOAD   = 1024,
+	 parameter       SENSOR_LEN    = 8'd13;
+	 parameter       DATA_WIDTH = 8,
+    parameter       ADDR_WIDTH = 10
 )(
     input  wire        clk_i,             // Clock há»‡ thá»‘ng
     input  wire        rst_i,             // Reset há»‡ thá»‘ng (Active High)
@@ -104,8 +107,8 @@ module uart #(
 
     // FIFO Ä‘á»‡m dá»¯ liá»‡u RX tá»« PC
     fifo #(
-        .DATA_WIDTH(8),
-        .ADDR_WIDTH(4) // DEPTH = 16
+        .DATA_WIDTH(DATA_WIDTH),
+        .ADDR_WIDTH(ADDR_WIDTH)
     ) u_fifo_pc_rx (
         .clk_i     (clk_i),
         .rst_i     (rst_i),
@@ -119,8 +122,8 @@ module uart #(
 
     // FIFO Ä‘á»‡m dá»¯ liá»‡u TX gá»­i vá» PC
     fifo #(
-        .DATA_WIDTH(8),
-        .ADDR_WIDTH(4)
+        .DATA_WIDTH(DATA_WIDTH),
+        .ADDR_WIDTH(ADDR_WIDTH)
     ) u_fifo_pc_tx (
         .clk_i     (clk_i),
         .rst_i     (rst_i),
@@ -163,7 +166,8 @@ module uart #(
         .CRC_VAL       (CRC_VAL),
         .TYPE_LOOPBACK (TYPE_LOOPBACK),
         .TYPE_SENSOR   (TYPE_SENSOR),
-        .MAX_PAYLOAD   (MAX_PAYLOAD)
+        .MAX_PAYLOAD   (MAX_PAYLOAD),
+		  .SENSOR_LEN    (SENSOR_LEN)
     ) u_process (
         .clk_i             (clk_i),
         .rst_i             (rst_i),
@@ -194,8 +198,8 @@ module uart #(
     // -------------------------------------------------------------------------
     // FIFO Ä‘á»‡m lá»‡nh TX gá»­i xuá»‘ng Sensor
     fifo #(
-        .DATA_WIDTH(8),
-        .ADDR_WIDTH(4)
+        .DATA_WIDTH(DATA_WIDTH),
+        .ADDR_WIDTH(ADDR_WIDTH)
     ) u_fifo_sensor_tx (
         .clk_i     (clk_i),
         .rst_i     (rst_i),
@@ -241,8 +245,8 @@ module uart #(
 
     // FIFO Ä‘á»‡m dá»¯ liá»‡u RX tá»« Sensor
     fifo #(
-        .DATA_WIDTH(8),
-        .ADDR_WIDTH(4)
+        .DATA_WIDTH(DATA_WIDTH),
+        .ADDR_WIDTH(ADDR_WIDTH)
     ) u_fifo_sensor_rx (
         .clk_i     (clk_i),
         .rst_i     (rst_i),
