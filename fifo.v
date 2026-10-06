@@ -1,6 +1,6 @@
 module fifo #(
     parameter DATA_WIDTH = 8,
-    parameter ADDR_WIDTH = 8  // Dung lượng FIFO = 2^8 = 256 byte
+    parameter ADDR_WIDTH = 10  // Dung lượng FIFO = 2^10 = 1024 byte
 )(
     input  wire                  clk_i,
     input  wire                  rst_i,
@@ -41,9 +41,9 @@ module fifo #(
     // 3. Cập nhật con trỏ và đếm số lượng
     always @(posedge clk_i or posedge rst_i) begin
         if (rst_i) begin
-            w_ptr    <= 0;
-            r_ptr    <= 0;
-            fifo_cnt <= 0;
+            w_ptr    <= {ADDR_WIDTH{1'b0}};
+            r_ptr    <= {ADDR_WIDTH{1'b0}};
+            fifo_cnt <= {(ADDR_WIDTH + 1){1'b0}};
         end else begin
             // Cập nhật con trỏ ghi
             if (write_valid)
